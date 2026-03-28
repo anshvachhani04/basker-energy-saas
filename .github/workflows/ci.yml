@@ -1,0 +1,98 @@
+name: Basker Energy SaaS — CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  # ── Quality & Test ──────────────────────────────────────────────────────────
+  test:
+    name: 🧪 Test & Quality Check
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest flake8
+
+      - name: 🔍 Lint (flake8)
+        run: |
+          flake8 streamlit_app/main.py streamlit_app/ml_core.py \
+            --max-line-length=130 \
+            --ignore=E302,E303,E501,W503,E225,E231,E251,W291,W293,E261,E262,E401,E711,E712 \
+            --count --statistics
+        continue-on-error: true
+
+      - name: ✅ ML Engine Tests
+        run: |
+          cd streamlit_app
+          python -c "
+          import sys, warnings
+          warnings.filterwarnings('ignore')
+          sys.path.insert(0, '.')
+          from ml_core import (get_engine_and_data, generate_fleet_data,
+                               compute_esg_metrics, generate_ai_recommendations)
+
+          engine, df = get_engine_and_data()
+          assert engine._trained, 'Engine not trained'
+          assert len(df) > 5000, 'Not enough data'
+
+          m = engine.performance_metrics(df)
+          assert 50 <= m['performance_ratio_pct'] <= 100
+          assert 10 <= m['cuf_pct'] <= 30
+
+          fc = engine.forecast_dayahead(df, 24)
+          assert len(fc) == 24
+
+          fleet = generate_fleet_data()
+          assert len(fleet) == 5
+
+          esg = compute_esg_metrics(df, 10.0)
+          assert esg['co2_avoided_t'] > 0
+
+          recs = generate_ai_recommendations(df, m, 'utility')
+          assert len(recs) >= 4
+
+          print('ALL ML ENGINE TESTS PASSED')
+          "
+
+      - name: ✅ Syntax Check (main.py)
+        run: |
+          python -m py_compile streamlit_app/main.py
+          python -m py_compile streamlit_app/ml_core.py
+          echo "Syntax OK"
+
+  # ── Deploy notification ─────────────────────────────────────────────────────
+  deploy-notify:
+    name: 🚀 Deploy Ready
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Notify
+        run: |
+          echo "✅ All tests passed — platform ready for deployment"
+          echo "📊 Dashboard: Deploy to Streamlit Cloud → streamlit_app/main.py"
+          echo "🔌 API: Deploy to Render → backend/main.py"

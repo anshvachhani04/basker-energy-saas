@@ -1,0 +1,168 @@
+version: "3.9"
+
+# ═══════════════════════════════════════════════════════════════════
+#  BASKER ENERGY — SaaS Platform Docker Compose
+#  Starts the full stack with one command: docker-compose up
+#
+#  Services:
+#    ⚡ streamlit   → Frontend dashboard  (http://localhost:8501)
+#    🔌 api         → FastAPI backend      (http://localhost:8000)
+#    🗄️  postgres   → Structured data DB   (localhost:5432)
+#    ⏱️  influxdb   → Time-series data DB  (http://localhost:8086)
+#    📦 redis       → Caching / sessions   (localhost:6379)
+#    📊 grafana     → Monitoring           (http://localhost:3000)
+# ═══════════════════════════════════════════════════════════════════
+
+services:
+
+  # ── Streamlit Dashboard ─────────────────────────────────────
+  streamlit:
+    build:
+      context: ./streamlit_app
+      dockerfile: Dockerfile
+    container_name: basker-dashboard
+    ports:
+      - "8501:8501"
+    environment:
+      - API_URL=http://api:8000
+      - ENV=production
+    volumes:
+      - ./streamlit_app:/app
+    depends_on:
+      - api
+    restart: unless-stopped
+    networks:
+      - basker-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ── FastAPI Backend ─────────────────────────────────────────
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: basker-api
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://basker:basker2026@postgres:5432/baskerdb
+      - INFLUXDB_URL=http://influxdb:8086
+      - INFLUXDB_TOKEN=${INFLUXDB_TOKEN:-change-me}
+      - INFLUXDB_ORG=baskerenergy
+      - INFLUXDB_BUCKET=solar_scada
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=${SECRET_KEY:-change-me}
+      - ENV=production
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./streamlit_app:/app/ml_core_src   # shared ML core
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - basker-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+
+  # ── PostgreSQL ──────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: basker-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: baskerdb
+      POSTGRES_USER: basker
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    restart: unless-stopped
+    networks:
+      - basker-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U basker -d baskerdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── InfluxDB (Time-series) ──────────────────────────────────
+  influxdb:
+    image: influxdb:2.7-alpine
+    container_name: basker-influxdb
+    ports:
+      - "8086:8086"
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: basker
+      DOCKER_INFLUXDB_INIT_PASSWORD: ${INFLUXDB_PASSWORD:-change-me}
+      DOCKER_INFLUXDB_INIT_ORG: baskerenergy
+      DOCKER_INFLUXDB_INIT_BUCKET: solar_scada
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUXDB_TOKEN:-change-me}
+    volumes:
+      - influx_data:/var/lib/influxdb2
+    restart: unless-stopped
+    networks:
+      - basker-net
+
+  # ── Redis (Cache + Sessions) ────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: basker-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --requirepass basker2026 --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - basker-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "basker2026", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ── Grafana (Monitoring) ────────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.4.0
+    container_name: basker-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-change-me}
+      GF_INSTALL_PLUGINS: grafana-clock-panel,grafana-piechart-panel
+      GF_SERVER_ROOT_URL: http://localhost:3000
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./infra/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./infra/grafana/datasources:/etc/grafana/provisioning/datasources
+    depends_on:
+      - influxdb
+      - postgres
+    restart: unless-stopped
+    networks:
+      - basker-net
+
+volumes:
+  postgres_data:
+  influx_data:
+  redis_data:
+  grafana_data:
+
+networks:
+  basker-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

@@ -1,0 +1,72 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+.venv/
+venv/
+
+# Data / models
+*.csv
+*.xlsx
+*.pkl
+*.joblib
+*.h5
+*.pt
+*.pth
+data/raw/
+data/processed/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Environment
+.env
+.env.local
+*.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker volumes / local data
+influxdb-data/
+grafana-data/
+postgres-data/
+
+# Logs
+*.log
+logs/
+
+# Testing
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Deployment helper scripts (may contain credentials)
+DEPLOY_NOW.bat
+PUSH_NOW.bat
+deploy.ps1
+deploy.sh

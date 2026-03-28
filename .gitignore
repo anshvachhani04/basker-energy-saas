@@ -70,3 +70,4 @@ DEPLOY_NOW.bat
 PUSH_NOW.bat
 deploy.ps1
 deploy.sh
+.github/workflows/

@@ -1,0 +1,58 @@
+name: Enable GitHub Pages
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ website ]
+    paths:
+      - '.github/workflows/enable-pages.yml'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+  administration: write
+
+jobs:
+  enable-pages:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enable GitHub Pages (gh-pages branch)
+        run: |
+          echo "Enabling GitHub Pages..."
+          
+          # Try to enable Pages (POST if not exists)
+          RESULT=$(curl -s -w "\n%{http_code}" \
+            -X POST \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${{ github.repository }}/pages" \
+            -d '{"source":{"branch":"gh-pages","path":"/"}}')
+            
+          HTTP_CODE=$(echo "$RESULT" | tail -1)
+          BODY=$(echo "$RESULT" | head -1)
+          echo "POST result: $HTTP_CODE"
+          echo "Body: $BODY"
+          
+          if [ "$HTTP_CODE" = "201" ]; then
+            echo "SUCCESS: GitHub Pages enabled!"
+            URL=$(echo "$BODY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('html_url',''))")
+            echo "URL: $URL"
+          elif [ "$HTTP_CODE" = "409" ] || [ "$HTTP_CODE" = "422" ]; then
+            echo "Pages already exists - updating to gh-pages branch..."
+            curl -s -X PUT \
+              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${{ github.repository }}/pages" \
+              -d '{"source":{"branch":"gh-pages","path":"/"}}'
+          fi
+          
+          # Final status check
+          echo "=== FINAL STATUS ==="
+          curl -s \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/pages" | \
+            python3 -c "import sys,json; d=json.load(sys.stdin); print('Pages URL:', d.get('html_url','')); print('Status:', d.get('status',''))"

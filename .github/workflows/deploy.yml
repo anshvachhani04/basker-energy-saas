@@ -1,0 +1,70 @@
+name: Deploy BASKER Energy Website to GitHub Pages
+
+on:
+  push:
+    branches: [ website ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Checkout website branch
+        uses: actions/checkout@v4
+        with:
+          ref: website
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Update next.config for static export
+        run: |
+          cat > next.config.ts << 'NEXTEOF'
+          import type { NextConfig } from "next";
+          const nextConfig: NextConfig = {
+            output: 'export',
+            trailingSlash: true,
+            images: { unoptimized: true },
+            basePath: '/basker-energy-saas',
+            assetPrefix: '/basker-energy-saas/',
+          };
+          export default nextConfig;
+          NEXTEOF
+
+      - name: Build static site
+        run: npm run build
+
+      - name: Add .nojekyll
+        run: touch out/.nojekyll
+
+      - name: Deploy to gh-pages branch
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./out
+          publish_branch: gh-pages
+          force_orphan: true
+
+      - name: Enable GitHub Pages
+        uses: actions/configure-pages@v5
+        with:
+          source_branch: gh-pages
+          source_path: /

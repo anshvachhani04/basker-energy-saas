@@ -610,7 +610,9 @@ def page_performance(engine, df, tier):
             x=["Ideal Clear-Sky","Soiling Loss","Temperature","Inverter","Shading","Mismatch","Actual"],
             y=[ideal_mwh, -soiling_l, -temp_l, -inv_l, -shadow_l, -mismatch_l, 0],
             measure=["absolute","relative","relative","relative","relative","relative","total"],
-            marker=dict(color=[BLUE,YELLOW,ORANGE,RED,PURPLE,TEAL,GREEN]),
+            increasing=dict(marker=dict(color=GREEN)),
+            decreasing=dict(marker=dict(color=RED)),
+            totals=dict(marker=dict(color=BLUE)),
             text=[f"{ideal_mwh:.0f}",f"-{soiling_l:.0f}",f"-{temp_l:.0f}",
                   f"-{inv_l:.0f}",f"-{shadow_l:.0f}",f"-{mismatch_l:.0f}",f"{actual_mwh:.0f}"],
             textposition="outside",
@@ -1244,7 +1246,6 @@ def page_fleet(engine, df, tier):
                 sizemode='area',
             ),
             mode='markers+text',
-            texttext=fleet['name'],
             textposition='top center',
             hovertemplate="%{text}<extra></extra>",
         ))
